@@ -376,10 +376,31 @@
                 grid-template-columns: repeat(2, 1fr);
             }
         }
+
+        .setup-notice {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            color: #856404;
+        }
+
+        .setup-notice strong {
+            display: block;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- 設定提示 -->
+        <div class="setup-notice" id="setup-notice" style="display: none;">
+            <strong>⚠️ 需要設定 Web App URL</strong>
+            <p>請在 HTML 檔案中找到 <code>const WEB_APP_URL</code> 並填入你的 Google Apps Script Web App URL</p>
+            <p>部署方式：見 GAS_Web_App_部署指南.md</p>
+        </div>
+
         <!-- 標題 -->
         <div class="header">
             <h1>📰 新聞 & 天氣資訊</h1>
@@ -408,7 +429,7 @@
                 <div class="card">
                     <h2><span>📚</span> 產業新聞</h2>
                     
-                    <!-- 按群科搜尋 -->
+                    <!-- 搜尋 -->
                     <div class="search-box">
                         <input type="text" id="search-input" placeholder="搜尋新聞標題...">
                         <button class="filter-btn" onclick="resetFilter()">重設</button>
@@ -434,27 +455,22 @@
     </div>
 
     <script>
-        // Google Sheet API 設定
-        const SHEET_ID = '1qbjcyD-I1JEzr1X-R01fmZt1M3fzikGTpXUvRl2mgDY';
-        
-        // 改用公開連結方式讀取資料（不需要 API Key）
-        async function getSheetData(sheetName) {
-            const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${sheetName}`;
-            try {
-                const response = await fetch(url);
-                const text = await response.text();
-                // 解析 Google Visualisation API 的回應
-                const json = JSON.parse(text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1));
-                return json.table.rows.map(row => row.c.map(cell => cell ? cell.v : ''));
-            } catch (error) {
-                console.error(`讀取 ${sheetName} 失敗:`, error);
-                return [];
-            }
-        }
+        // ⚠️ 必須填寫你的 Google Apps Script Web App URL
+        const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycby5d38TQ_OuEAVTUOMvdXTo_nJvqhBy1vLSV7YuEca68bejBnqRJaDVcU_dVB_7eXcCOQ/exec';
+
+        let allNews = [];
+        let selectedCategories = [];
 
         // 初始化
         document.addEventListener('DOMContentLoaded', () => {
+            // 檢查是否設定 URL
+            if (WEB_APP_URL === 'YOUR_WEB_APP_URL_HERE') {
+                document.getElementById('setup-notice').style.display = 'block';
+                return;
+            }
+
             loadData();
+            document.getElementById('search-input').addEventListener('input', displayNews);
             setInterval(loadData, 300000); // 5 分鐘更新一次
         });
 
@@ -467,22 +483,15 @@
         // 載入天氣資料
         async function loadWeather() {
             try {
-                const data = await getSheetData('Weather');
-                
-                if (!data || data.length === 0) {
+                const response = await fetch(`${WEB_APP_URL}?type=weather`);
+                const result = await response.json();
+
+                if (result.status !== 'success' || !result.data) {
                     showWeatherEmpty();
                     return;
                 }
 
-                // 取最後一筆資料（最新的天氣）
-                const weatherData = data[data.length - 1];
-                
-                if (!weatherData) {
-                    showWeatherEmpty();
-                    return;
-                }
-
-                displayWeather(weatherData);
+                displayWeather(result.data);
                 updateTime('weather-time');
             } catch (error) {
                 console.error('天氣載入失敗:', error);
@@ -491,33 +500,31 @@
         }
 
         // 顯示天氣
-        function displayWeather(data) {
-            const [datetime, location, temp, description, humidity, windspeed, alert] = data;
-
+        function displayWeather(weather) {
             let html = `
                 <div class="weather-item">
-                    <h3>${location}</h3>
+                    <h3>${weather.location}</h3>
                     <div class="weather-detail">
                         <div class="weather-stat">
                             <div class="weather-stat-label">溫度</div>
-                            <div class="weather-stat-value">${temp || 'N/A'}</div>
+                            <div class="weather-stat-value">${weather.temperature}</div>
                         </div>
                         <div class="weather-stat">
                             <div class="weather-stat-label">濕度</div>
-                            <div class="weather-stat-value">${humidity || 'N/A'}</div>
+                            <div class="weather-stat-value">${weather.humidity}</div>
                         </div>
                         <div class="weather-stat">
                             <div class="weather-stat-label">風速</div>
-                            <div class="weather-stat-value">${windspeed || 'N/A'}</div>
+                            <div class="weather-stat-value">${weather.windSpeed}</div>
                         </div>
                     </div>
                     <div class="weather-description">
-                        <strong>天氣：</strong> ${description || '無資料'}
+                        <strong>天氣：</strong> ${weather.description}
                     </div>
             `;
 
-            if (alert && alert !== '無警報') {
-                html += `<div class="alert">⚠️ ${alert}</div>`;
+            if (weather.alert && weather.alert !== '無警報') {
+                html += `<div class="alert">⚠️ ${weather.alert}</div>`;
             }
 
             html += `</div>`;
@@ -546,24 +553,17 @@
         // 載入新聞資料
         async function loadNews() {
             try {
-                const data = await getSheetData('News');
+                const response = await fetch(`${WEB_APP_URL}?type=news`);
+                const result = await response.json();
 
-                if (!data || data.length === 0) {
+                if (result.status !== 'success' || !result.data) {
                     showNewsEmpty();
                     return;
                 }
 
-                // 解析資料（第一行是標題）
-                allNews = data.map(row => ({
-                    date: row[0] || '',
-                    category: row[1] || '其他',
-                    title: row[2] || '未命名',
-                    source: row[3] || '來源',
-                    url: row[4] || '#',
-                    description: row[5] || '無摘要'
-                })).reverse(); // 最新的放在最前
+                allNews = result.data;
 
-                // 建立群科搜尋（改成按群科）
+                // 建立群科篩選
                 createGroupFilter();
 
                 // 顯示新聞
@@ -575,7 +575,7 @@
             }
         }
 
-        // 建立群科篩選（改名，功能相同）
+        // 建立群科篩選
         function createGroupFilter() {
             const categories = [...new Set(allNews.map(n => n.category))].sort();
             const filterHTML = categories.map(cat => `
@@ -594,7 +594,6 @@
                 selectedCategories.push(category);
             }
 
-            // 更新篩選按鈕狀態
             document.querySelectorAll('.category-tag').forEach(tag => {
                 if (selectedCategories.includes(tag.textContent)) {
                     tag.classList.add('active');
@@ -631,8 +630,8 @@
             const newsHTML = filtered.map(news => `
                 <div class="news-item">
                     <span class="news-category">${news.category}</span>
-                    <div class="news-title">${escapeHtml(news.title)}</div>
-                    <div class="news-description">${escapeHtml(news.description)}</div>
+                    <div class="news-title">${news.title}</div>
+                    <div class="news-description">${news.description}</div>
                     <div class="news-meta">
                         <span>${news.date}</span>
                         <a href="${news.url}" target="_blank" class="news-link">閱讀全文 →</a>
@@ -653,14 +652,6 @@
             displayNews();
         }
 
-        // 搜尋即時顯示
-        document.addEventListener('DOMContentLoaded', () => {
-            const searchInput = document.getElementById('search-input');
-            if (searchInput) {
-                searchInput.addEventListener('input', displayNews);
-            }
-        });
-
         // 時間戳更新
         function updateTime(elementId) {
             const now = new Date();
@@ -669,38 +660,6 @@
                 minute: '2-digit' 
             });
             document.getElementById(elementId).textContent = time;
-        }
-
-        // HTML 轉義
-        function escapeHtml(text) {
-            const map = {
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                '"': '&quot;',
-                "'": '&#039;'
-            };
-            return text.replace(/[&<>"']/g, m => map[m]);
-        }
-
-        // 顯示新聞空狀態
-        function showNewsEmpty() {
-            document.getElementById('news-container').innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">📭</div>
-                    <p>暫無新聞資料</p>
-                </div>
-            `;
-        }
-
-        // 顯示新聞錯誤
-        function showNewsError() {
-            document.getElementById('news-container').innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">⚠️</div>
-                    <p>無法載入新聞資料</p>
-                </div>
-            `;
         }
     </script>
 </body>
