@@ -249,7 +249,18 @@
             transition: border-color 0.2s;
         }
 
-        .search-box input:focus {
+        .search-box select {
+            padding: 12px 16px;
+            border: 2px solid #c8e6c9;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.2s;
+            background: white;
+            cursor: pointer;
+        }
+
+        .search-box input:focus,
+        .search-box select:focus {
             outline: none;
             border-color: #4caf50;
             box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
@@ -412,6 +423,17 @@
             <div>
                 <div class="card">
                     <h2><span>🌤️</span> 天氣資訊</h2>
+                    
+                    <!-- 地點選擇 -->
+                    <div class="search-box" style="margin-bottom: 15px;">
+                        <select id="location-select" onchange="changeLocation()">
+                            <option value="彰化縣">彰化縣</option>
+                            <option value="臺中市">臺中市</option>
+                            <option value="南投縣">南投縣</option>
+                            <option value="苗栗縣">苗栗縣</option>
+                        </select>
+                    </div>
+                    
                     <div id="weather-container" class="weather-container">
                         <div class="loading">
                             <div class="spinner"></div>
@@ -460,6 +482,7 @@
 
         let allNews = [];
         let selectedCategories = [];
+        let selectedLocation = '彰化縣';  // 預設位置
 
         // 初始化
         document.addEventListener('DOMContentLoaded', () => {
@@ -481,9 +504,9 @@
         }
 
         // 載入天氣資料
-        async function loadWeather() {
+        async function loadWeather(location = selectedLocation) {
             try {
-                const response = await fetch(`${WEB_APP_URL}?type=weather`);
+                const response = await fetch(`${WEB_APP_URL}?type=weather&location=${encodeURIComponent(location)}`);
                 const result = await response.json();
 
                 if (result.status !== 'success' || !result.data) {
@@ -650,6 +673,12 @@
                 tag.classList.remove('active');
             });
             displayNews();
+        }
+
+        // 切換地點
+        function changeLocation() {
+            selectedLocation = document.getElementById('location-select').value;
+            loadWeather();
         }
 
         // 時間戳更新
